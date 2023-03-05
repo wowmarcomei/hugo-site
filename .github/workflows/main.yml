@@ -65,11 +65,11 @@ jobs:
         env:
           # Base64 编码的 acme.sh 配置信息
           ACME_SH_ACCOUNT_TAR: ${{ secrets.ACME_SH_ACCOUNT_TAR }}
-
-      # 申请证书
+      # apply for ssl certificates
       - name: Issue SSL certificates
         shell: bash
-        run:  ~/.acme.sh/acme.sh --issue -d "meixuhong.com" -d "*.meixuhong.com" --dns dns_cf --server letsencrypt
+        run: |
+            ~/.acme.sh/acme.sh --issue -d "meixuhong.com" -d "*.meixuhong.com" --dns dns_cf --server letsencrypt
 
       - name: Copy certificate to output paths
         shell: bash
