@@ -1,20 +1,22 @@
-on: [push] # push 代码时触发
-jobs: 
-    deploy: 
-        runs-on: ubuntu-latest
-        name: Tencent Cloudbase Github Action Example
-        steps: 
-        - name: Checkout
-          uses: actions/checkout@v2
-        # 使用云开发 Github Action 部署
-        - name: Deploy static to Tencent CloudBase
-          id: deployStatic
-          uses: TencentCloudBase/cloudbase-action@v1.1.1
-          with: 
-            # 云开发的访问密钥 secretId 和 secretKey
-            secretId: ${{ secrets.SECRET_ID }}
-            secretKey: ${{ secrets.SECRET_KEY }}
-            # 云开发的环境id
-            envId: ${{ secrets.ENV_ID }}
-            # Github 项目静态文件的路径
-            staticSrcPath: public
+name: Upload to COS
+
+on: [push]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: Install coscmd
+      run: sudo pip install coscmd
+    - name: Configure coscmd
+      env:
+        SECRET_ID: ${{ secrets.SecretId }}
+        SECRET_KEY: ${{ secrets.SecretKey }}
+        BUCKET: docs-1300533487
+        REGION: ap-shanghai
+      run: coscmd config -a $SECRET_ID -s $SECRET_KEY -b $BUCKET -r $REGION
+    - name: Upload
+      run: coscmd upload -rfs --delete ./ / --ignore "./.git/*"
