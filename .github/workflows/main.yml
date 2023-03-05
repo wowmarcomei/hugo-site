@@ -1,24 +1,12 @@
-name: Upload files to COS and Sync to CDN
+name: Upload to COS
 
 on: [push]
 
-# 全局环境变量
-env:
-  # Checkout 到的目录
-  CERTS_OUTPUT_BASE: certs
-  # 证书输出目录
-  CERTS_OUTPUT_DIRECTORY: meixuhong.com
-  # 证书文件名
-  FILE_FULLCHAIN: fullchain.pem
-  # 私钥文件名
-  FILE_KEY: privatekey.key
-
 jobs:
-  ## 1.上传public到COS
-  upload-to-cos:
-    name: upload public files to Tencent Cloud COS
+  build:
+
     runs-on: ubuntu-latest
-  
+
     steps:
     - uses: actions/checkout@v1
     - name: Install coscmd
@@ -34,101 +22,42 @@ jobs:
       run: coscmd upload -rfs --delete -f ./public/ / --ignore "./.git/*"
 
 
-  # 2.申请证书
-  issue-ssl-certificate:
-    # 申请证书并 push 到 certs 分支
-    name: Issue SSL certificate
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v2
-        with:
-          ref: main
+deploy-to-qcloud-cdn:
+  name: Deploy certificate to Tencent Cloud CDN
+  runs-on: ubuntu-latest
+  needs: issue-ssl-certificate
 
-      - name: Checkout output branch
-        uses: actions/checkout@v2
-        with:
-          ref: certs
-          path: ${{ env.CERTS_OUTPUT_BASE }}
+  env:
+     # Checkout 到的目录
+     CERTS_OUTPUT_BASE: certs
+     # 证书输出目录
+     CERTS_OUTPUT_DIRECTORY: meixuhong.com
+     # 证书文件名
+     FILE_FULLCHAIN: fullchain.pem
+     # 私钥文件名
+     FILE_KEY: privatekey.key
 
-      # 安装 acme.sh
-      - name: Install acme.sh
-        shell: bash
-        run: curl -s https://get.acme.sh | sh
+  steps:
+    - name: Check out
+      uses: actions/checkout@v2
+      with:
+        # If you just commited and pushed your newly issued certificate to this repo in a previous job,
+        # use `ref` to make sure checking out the newest commit in this job
+        ref: ${{ github.ref }}
 
-      # 解压 acme.sh 配置信息
-      - name: Extract account files for acme.sh
-        shell: bash
-        run: |
-            echo "$ACME_SH_ACCOUNT_TAR" | base64 -d | tar -C ~/.acme.sh -xz
+    - uses: renbaoshuo/deploy-certificate-to-tencentcloud@v1
+      with:
+        # Use Access Key
+        secret-id: ${{ secrets.SecretId }}
+        secret-key: ${{ secrets.SecretKey }}
 
-        env:
-          # Base64 编码的 acme.sh 配置信息
-          ACME_SH_ACCOUNT_TAR: ${{ secrets.ACME_SH_ACCOUNT_TAR }}
-      # apply for ssl certificates
-      - name: Issue SSL certificates
-        shell: bash
-        run: |
-            ~/.acme.sh/acme.sh --issue -d "meixuhong.com" -d "*.meixuhong.com" --dns dns_cf --server letsencrypt
+        # Specify PEM fullchain file
+        fullchain-file: ${{ env.CERTS_OUTPUT_DIRECTORY }}/${{ env.FILE_FULLCHAIN }}
+        # Specify PEM private key file
+        key-file: ${{ env.CERTS_OUTPUT_DIRECTORY }}/${{ env.FILE_KEY }}
 
-      - name: Copy certificate to output paths
-        shell: bash
-        run: |
-            ACME_SH_TEMP_DIR="$(mktemp -d)"
-            ACME_SH_TEMP_FILE_FULLCHAIN="$ACME_SH_TEMP_DIR/fullchain.pem"
-            ACME_SH_TEMP_FILE_KEY="$ACME_SH_TEMP_DIR/key.pem"
-
-          # 不要忘记修改这里的 -d 参数值为上方的第一个域名
-          ~/.acme.sh/acme.sh --install-cert -d "meixuhong.com" --fullchain-file "$ACME_SH_TEMP_FILE_FULLCHAIN" --key-file "$ACME_SH_TEMP_FILE_KEY"
-
-          [[ -z "$ACME_SH_OUTPUT_FULLCHAIN" ]] || (mkdir -p "$(dirname "$ACME_SH_OUTPUT_FULLCHAIN")" && cp "$ACME_SH_TEMP_FILE_FULLCHAIN" "$ACME_SH_OUTPUT_FULLCHAIN")
-          [[ -z "$ACME_SH_OUTPUT_KEY" ]] || (mkdir -p "$(dirname "$ACME_SH_OUTPUT_KEY")" && cp "$ACME_SH_TEMP_FILE_KEY" "$ACME_SH_OUTPUT_KEY")
-
-          rm -rf "$ACME_SH_TEMP_DIR"
-        env:
-          ACME_SH_OUTPUT_FULLCHAIN: ${{ env.CERTS_OUTPUT_BASE }}/${{ env.CERTS_OUTPUT_DIRECTORY }}/${{ env.FILE_FULLCHAIN }}
-          ACME_SH_OUTPUT_KEY: ${{ env.CERTS_OUTPUT_BASE }}/${{ env.CERTS_OUTPUT_DIRECTORY }}/${{ env.FILE_KEY }}
-
-      # 上传证书
-      - name: Push to GitHub
-        run: |
-          git config --global user.name "wowmarcomei"
-  
-          cd "$CERTS_DIRECTORY"
-
-          git add "$FILE_FULLCHAIN" "$FILE_KEY"
-          git commit -m "Upload certificates on $(date '+%Y-%m-%d %H:%M:%S')"
-          git push
-        env:
-          TZ: Asia/Shanghai
-          CERTS_DIRECTORY: ${{ env.CERTS_OUTPUT_BASE }}/${{ env.CERTS_OUTPUT_DIRECTORY }}
-  
-  ## 3.上传证书到cdn
-  deploy-to-qcloud-cdn:
-    name: Deploy certificate to Tencent Cloud CDN
-    runs-on: ubuntu-latest
-    needs: issue-ssl-certificate
-  
-    steps:
-      - name: Check out
-        uses: actions/checkout@v2
-        with:
-          # If you just commited and pushed your newly issued certificate to this repo in a previous job,
-          # use `ref` to make sure checking out the newest commit in this job
-          ref: ${{ github.ref }}
-  
-      - uses: renbaoshuo/deploy-certificate-to-tencentcloud@v1
-        with:
-          # Use Access Key
-          secret-id: ${{ secrets.SecretId }}
-          secret-key: ${{ secrets.SecretKey }}
-  
-          # Specify PEM fullchain file
-          fullchain-file: ${{ env.CERTS_OUTPUT_DIRECTORY }}/${{ env.FILE_FULLCHAIN }}
-          # Specify PEM private key file
-          key-file: ${{ env.CERTS_OUTPUT_DIRECTORY }}/${{ env.FILE_KEY }}
-  
-          # Deploy to CDN
-          cdn-domains: |
-             hugo.meixuhong.com
+        # Deploy to CDN
+        cdn-domains: |
+           hugo.meixuhong.com
+~
 
