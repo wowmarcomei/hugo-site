@@ -71,7 +71,6 @@ jobs:
         shell: bash
         run:  ~/.acme.sh/acme.sh --issue -d "example.com" -d "*.example.com" --dns dns_cf --server letsencrypt
 
-      # 导出证书
       - name: Copy certificate to output paths
         shell: bash
         run: |
