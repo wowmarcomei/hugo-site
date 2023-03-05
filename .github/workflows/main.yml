@@ -59,5 +59,3 @@ deploy-to-qcloud-cdn:
         # Deploy to CDN
         cdn-domains: |
            hugo.meixuhong.com
-~
-
